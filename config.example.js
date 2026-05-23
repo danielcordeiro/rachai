@@ -1,0 +1,7 @@
+// Modelo de configuração. Copie para config.js e preencha com os dados do seu
+// projeto Supabase (Project Settings → API). A publishable/anon key é pública
+// por design (o acesso é protegido por RLS), então pode ser versionada.
+window.RACHAI_CONFIG = {
+  SUPABASE_URL: "https://SUA_REF.supabase.co",
+  SUPABASE_ANON_KEY: "SUA_PUBLISHABLE_OU_ANON_KEY",
+};
