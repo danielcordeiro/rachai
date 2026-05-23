@@ -30,15 +30,39 @@ export function fmtBRL(cents) {
 }
 
 /**
- * Converte texto digitado ("12,50", "12.50", "1.234,56", "R$ 10") em centavos.
- * Retorna null se inválido.
+ * Converte texto digitado em centavos (inteiro), tratando separadores pt-BR e en-US.
+ * Regras de desambiguação:
+ *  - "1.234,56" (vírgula decimal) e "1,234.56" (ponto decimal): o ÚLTIMO separador é o decimal.
+ *  - só vírgula  -> decimal: "12,50" => 1250
+ *  - só ponto    -> decimal apenas se for 1 ponto seguido de 1-2 dígitos ("12.5", "12.50");
+ *                   caso contrário é separador de milhar ("1.500" => 1500, "1.234.567" => 1234567)
+ * Retorna null se inválido (vazio, NaN ou negativo).
  */
 export function parseAmountToCents(str) {
   if (str == null) return null;
-  let s = String(str).trim().replace(/[R$\s]/gi, "");
-  if (!s) return null;
-  // Se tem vírgula, ela é o separador decimal (pt-BR); pontos são milhar.
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  let s = String(str).trim().replace(/[^\d.,-]/g, ""); // mantém dígitos, . , -
+  if (!s || s === "-") return null;
+  if (s.includes("-")) return null; // não aceitamos valores negativos
+
+  const hasComma = s.includes(",");
+  const hasDot = s.includes(".");
+
+  if (hasComma && hasDot) {
+    if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
+      s = s.replace(/\./g, "").replace(",", "."); // vírgula é o decimal (pt-BR)
+    } else {
+      s = s.replace(/,/g, ""); // ponto é o decimal (en-US)
+    }
+  } else if (hasComma) {
+    s = s.replace(",", ".");
+  } else if (hasDot) {
+    const parts = s.split(".");
+    const dec = parts[parts.length - 1];
+    if (!(parts.length === 2 && dec.length <= 2)) {
+      s = s.replace(/\./g, ""); // pontos são separador de milhar
+    }
+  }
+
   const num = Number(s);
   if (!Number.isFinite(num) || num < 0) return null;
   return Math.round(num * 100);

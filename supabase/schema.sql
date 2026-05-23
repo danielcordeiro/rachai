@@ -68,6 +68,18 @@ create table if not exists public.shopping_items (
 );
 create index if not exists shopping_event_idx on public.shopping_items(event_id);
 
+-- Pagamentos/reembolsos entre pessoas (acerto registrado).
+create table if not exists public.payments (
+  id           uuid primary key default gen_random_uuid(),
+  event_id     uuid not null references public.events(id) on delete cascade,
+  from_id      uuid not null references public.people(id) on delete restrict,
+  to_id        uuid not null references public.people(id) on delete restrict,
+  amount_cents integer not null check (amount_cents > 0),
+  created_at   timestamptz not null default now(),
+  check (from_id <> to_id)
+);
+create index if not exists payments_event_idx on public.payments(event_id);
+
 -- ----------------------------------------------------------------------------
 -- RLS: habilita e NÃO cria policy pública.
 -- Assim a anon key (pública) não consegue ler/escrever direto nas tabelas;
@@ -80,6 +92,7 @@ alter table public.group_members  enable row level security;
 alter table public.expenses       enable row level security;
 alter table public.expense_shares enable row level security;
 alter table public.shopping_items enable row level security;
+alter table public.payments       enable row level security;
 
 -- ============================================================================
 -- Funções RPC (gateway). SECURITY DEFINER => rodam como dono e ignoram a RLS.
@@ -140,7 +153,12 @@ as $$
                                   'bought', i.bought, 'leftover', i.leftover,
                                   'missing', i.missing)
                                 order by i.created_at)
-                        from shopping_items i where i.event_id = e.id), '[]'::json)
+                        from shopping_items i where i.event_id = e.id), '[]'::json),
+    'payments', coalesce((select json_agg(json_build_object(
+                                  'id', pm.id, 'from_id', pm.from_id, 'to_id', pm.to_id,
+                                  'amount_cents', pm.amount_cents, 'created_at', pm.created_at)
+                                order by pm.created_at)
+                        from payments pm where pm.event_id = e.id), '[]'::json)
   ) end
   from events e where e.id = p_event;
 $$;
@@ -185,6 +203,12 @@ as $$
 begin
   if exists (select 1 from expenses where payer_id = p_person) then
     raise exception 'Esta pessoa pagou despesas. Remova ou edite essas despesas antes de excluí-la.';
+  end if;
+  if exists (select 1 from expense_shares where person_id = p_person) then
+    raise exception 'Esta pessoa participa de despesas. Edite essas despesas (tirando-a do rateio) antes de excluí-la.';
+  end if;
+  if exists (select 1 from payments where from_id = p_person or to_id = p_person) then
+    raise exception 'Esta pessoa tem pagamentos registrados. Remova esses pagamentos antes de excluí-la.';
   end if;
   delete from people where id = p_person;
 end;
@@ -364,6 +388,40 @@ begin
 end;
 $$;
 
+-- Pagamentos -------------------------------------------------------------------
+create or replace function public.add_payment(
+  p_event uuid, p_from uuid, p_to uuid, p_amount_cents integer)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_id uuid;
+begin
+  if p_from = p_to then
+    raise exception 'Quem paga e quem recebe não podem ser a mesma pessoa';
+  end if;
+  if p_amount_cents is null or p_amount_cents <= 0 then
+    raise exception 'Valor do pagamento deve ser maior que zero';
+  end if;
+  insert into payments(event_id, from_id, to_id, amount_cents)
+    values (p_event, p_from, p_to, p_amount_cents)
+    returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.delete_payment(p_payment uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from payments where id = p_payment;
+end;
+$$;
+
 -- ----------------------------------------------------------------------------
 -- Permissões: anon e authenticated podem EXECUTAR as funções (e nada mais).
 -- ----------------------------------------------------------------------------
@@ -384,5 +442,7 @@ grant execute on function
   public.set_event_closed(uuid, boolean),
   public.add_shopping_item(uuid, text, text),
   public.update_shopping_item(uuid, text, text, boolean, text, text),
-  public.delete_shopping_item(uuid)
+  public.delete_shopping_item(uuid),
+  public.add_payment(uuid, uuid, uuid, integer),
+  public.delete_payment(uuid)
 to anon, authenticated;

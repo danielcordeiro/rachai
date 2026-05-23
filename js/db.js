@@ -71,4 +71,8 @@ export const db = {
       p_missing: missing,
     }),
   deleteShoppingItem: (itemId) => rpc("delete_shopping_item", { p_item: itemId }),
+
+  addPayment: (eventId, fromId, toId, amountCents) =>
+    rpc("add_payment", { p_event: eventId, p_from: fromId, p_to: toId, p_amount_cents: amountCents }),
+  deletePayment: (paymentId) => rpc("delete_payment", { p_payment: paymentId }),
 };

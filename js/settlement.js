@@ -30,6 +30,21 @@ export function computeBalances(people, expenses) {
 }
 
 /**
+ * Aplica pagamentos já registrados aos saldos (acerto vivo).
+ * Quem pagou (from) tem a dívida reduzida (saldo += valor);
+ * quem recebeu (to) tem o crédito reduzido (saldo -= valor).
+ * @returns {Map<string, number>} novo mapa de saldos em centavos
+ */
+export function applyPayments(balances, payments) {
+  const adj = new Map(balances);
+  for (const pm of payments || []) {
+    adj.set(pm.from_id, (adj.get(pm.from_id) || 0) + pm.amount_cents);
+    adj.set(pm.to_id, (adj.get(pm.to_id) || 0) - pm.amount_cents);
+  }
+  return adj;
+}
+
+/**
  * Gera a lista de transferências minimizando a QUANTIDADE de transações:
  * casa repetidamente o maior devedor com o maior credor (greedy).
  * @returns {Array<{from: string, to: string, amount_cents: number}>}

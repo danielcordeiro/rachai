@@ -1,7 +1,7 @@
 // Rachaí — app principal: roteamento por hash, telas e formulários.
 import { db, isConfigured } from "./db.js";
 import { el, fmtBRL, parseAmountToCents, toast, confirmAction, copyText, clear } from "./ui.js";
-import { computeBalances, minimizeTransactions, totalSpent, computeTotals } from "./settlement.js";
+import { computeBalances, minimizeTransactions, totalSpent, computeTotals, applyPayments } from "./settlement.js";
 
 const root = () => document.getElementById("app");
 
@@ -565,15 +565,17 @@ function openExpenseForm(expense) {
     const cents = parseAmountToCents(amountInput.value);
     if (cents == null || cents <= 0) return toast("Informe um valor válido.", "error");
     if (selected.size === 0) return toast("Selecione ao menos um participante.", "error");
+    saveBtn.disabled = true;
     try {
       const ids = [...selected];
       if (isEdit) await db.updateExpense(expense.id, payerSelect.value, descInput.value, cents, ids);
       else await db.addExpense(state.eventId, payerSelect.value, descInput.value, cents, ids);
       close();
       await reload();
-    } catch (e) { toast(e.message, "error"); }
+    } catch (e) { toast(e.message, "error"); saveBtn.disabled = false; }
   };
 
+  const saveBtn = el("button", { class: "btn btn--primary btn--block", text: "Salvar", onClick: save });
   const { close } = openModal(isEdit ? "Editar despesa" : "Nova despesa",
     el("div", {}, [
       el("label", { class: "label", text: "Descrição" }),
@@ -588,7 +590,7 @@ function openExpenseForm(expense) {
       ]),
       groupChips,
       personChecks,
-      el("button", { class: "btn btn--primary btn--block", text: "Salvar", onClick: save }),
+      saveBtn,
     ])
   );
   setTimeout(() => descInput.focus(), 0);
@@ -606,7 +608,7 @@ async function removeExpense(x) {
 // ABA ACERTO
 // ---------------------------------------------------------------------------
 function settlementTab() {
-  const { people, expenses } = state.snapshot;
+  const { people, expenses, payments = [] } = state.snapshot;
   const wrap = el("div", {});
 
   if (!expenses.length) {
@@ -614,41 +616,70 @@ function settlementTab() {
     return wrap;
   }
 
-  const balances = computeBalances(people, expenses);
-  const transfers = minimizeTransactions(balances);
+  // Saldo VIVO = despesas − consumo − pagamentos já registrados.
+  const gross = computeBalances(people, expenses);
+  const net = applyPayments(gross, payments);
+  const transfers = minimizeTransactions(net);
 
-  // resumo de transferências
-  wrap.append(el("h3", { class: "section", text: "Quem paga quem" }));
+  // o que ainda falta acertar
+  wrap.append(el("h3", { class: "section", text: "Quem ainda paga quem" }));
   if (!transfers.length) {
-    wrap.append(el("div", { class: "card empty", text: "Tudo certo — ninguém deve nada! 🎉" }));
+    wrap.append(el("div", { class: "card empty", text: "Tudo certo — está tudo acertado! 🎉" }));
   } else {
     wrap.append(
       el("ul", { class: "transfers" }, transfers.map((t) =>
-        el("li", { class: "transfer" }, [
-          el("span", { class: "transfer__from", text: nameOf(t.from) }),
-          el("span", { class: "transfer__arrow", text: "→" }),
-          el("span", { class: "transfer__to", text: nameOf(t.to) }),
-          el("span", { class: "transfer__amount", text: fmtBRL(t.amount_cents) }),
+        el("li", { class: "transfer transfer--actionable" }, [
+          el("div", { class: "transfer__line" }, [
+            el("span", { class: "transfer__from", text: nameOf(t.from) }),
+            el("span", { class: "transfer__arrow", text: "→" }),
+            el("span", { class: "transfer__to", text: nameOf(t.to) }),
+            el("span", { class: "transfer__amount", text: fmtBRL(t.amount_cents) }),
+          ]),
+          el("button", {
+            class: "btn btn--primary btn--sm",
+            text: "✓ Pago",
+            title: "Registrar este pagamento",
+            onClick: (e) => markPaid(t, e.currentTarget),
+          }),
         ])
       ))
     );
     wrap.append(
-      el("p", { class: "muted small center", text: `${transfers.length} transferência(s) para quitar tudo.` })
+      el("p", { class: "muted small center", text: `Faltam ${transfers.length} transferência(s) para quitar tudo.` })
     );
-    wrap.append(
-      el("button", {
-        class: "btn btn--ghost btn--block",
-        text: "📋 Copiar resumo",
-        onClick: () => copyResume(transfers),
-      })
-    );
+    wrap.append(el("div", { class: "row2" }, [
+      el("button", { class: "btn btn--ghost", text: "📋 Copiar", onClick: () => copyResume(transfers) }),
+      el("button", { class: "btn btn--ghost", text: "+ Pagamento manual", onClick: () => openPaymentForm() }),
+    ]));
   }
 
-  // saldos individuais
-  wrap.append(el("h3", { class: "section", text: "Saldo de cada um" }));
+  // pagamentos registrados
+  if (payments.length) {
+    wrap.append(el("h3", { class: "section", text: "Pagamentos registrados" }));
+    wrap.append(
+      el("ul", { class: "list" }, payments.map((pm) =>
+        el("li", { class: "list__item" }, [
+          el("span", { class: "pay__line" }, [
+            el("strong", { text: nameOf(pm.from_id) }),
+            el("span", { class: "muted", text: " pagou " }),
+            el("strong", { class: "pay__amount", text: fmtBRL(pm.amount_cents) }),
+            el("span", { class: "muted", text: " a " }),
+            el("strong", { text: nameOf(pm.to_id) }),
+          ]),
+          iconBtn("↩️", "Desfazer pagamento", () => removePayment(pm)),
+        ])
+      ))
+    );
+  } else if (!transfers.length) {
+    // sem transfers e sem pagamentos não acontece; mas garante o botão manual
+    wrap.append(el("button", { class: "btn btn--ghost btn--block", text: "+ Registrar pagamento", onClick: () => openPaymentForm() }));
+  }
+
+  // saldos individuais (vivos)
+  wrap.append(el("h3", { class: "section", text: "Saldo atual de cada um" }));
   wrap.append(
     el("ul", { class: "list" }, people.map((p) => {
-      const b = balances.get(p.id) || 0;
+      const b = net.get(p.id) || 0;
       const cls = b > 0 ? "pos" : b < 0 ? "neg" : "zero";
       const label = b > 0 ? "a receber" : b < 0 ? "a pagar" : "quitado";
       return el("li", { class: "list__item" }, [
@@ -659,6 +690,62 @@ function settlementTab() {
   );
 
   return wrap;
+}
+
+async function markPaid(t, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "…"; } // evita duplo registro por toque repetido
+  try {
+    await db.addPayment(state.eventId, t.from, t.to, t.amount_cents);
+    toast(`Pagamento de ${nameOf(t.from)} → ${nameOf(t.to)} registrado.`, "success");
+    await reload();
+  } catch (e) {
+    toast(e.message, "error");
+    if (btn) { btn.disabled = false; btn.textContent = "✓ Pago"; }
+  }
+}
+
+async function removePayment(pm) {
+  if (!confirmAction(`Desfazer o pagamento de ${nameOf(pm.from_id)} → ${nameOf(pm.to_id)} (${fmtBRL(pm.amount_cents)})?`)) return;
+  try {
+    await db.deletePayment(pm.id);
+    await reload();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function openPaymentForm() {
+  const { people } = state.snapshot;
+  const fromSelect = el("select", { class: "input" },
+    people.map((p) => el("option", { value: p.id, text: p.name })));
+  const toSelect = el("select", { class: "input" },
+    people.map((p, i) => el("option", { value: p.id, text: p.name, selected: i === 1 ? "" : null })));
+  const amountInput = el("input", { class: "input", type: "text", inputmode: "decimal", placeholder: "0,00" });
+
+  const save = async () => {
+    const from = fromSelect.value;
+    const to = toSelect.value;
+    if (from === to) return toast("Quem paga e quem recebe devem ser diferentes.", "error");
+    const cents = parseAmountToCents(amountInput.value);
+    if (cents == null || cents <= 0) return toast("Informe um valor válido.", "error");
+    saveBtn.disabled = true;
+    try {
+      await db.addPayment(state.eventId, from, to, cents);
+      close();
+      await reload();
+    } catch (e) { toast(e.message, "error"); saveBtn.disabled = false; }
+  };
+
+  const saveBtn = el("button", { class: "btn btn--primary btn--block", text: "Registrar", onClick: save });
+  const { close } = openModal("Registrar pagamento",
+    el("div", {}, [
+      el("label", { class: "label", text: "Quem pagou" }),
+      fromSelect,
+      el("label", { class: "label", text: "Quem recebeu" }),
+      toSelect,
+      el("label", { class: "label", text: "Valor" }),
+      amountInput,
+      saveBtn,
+    ])
+  );
 }
 
 async function copyResume(transfers) {

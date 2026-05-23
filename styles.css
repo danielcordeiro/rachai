@@ -203,6 +203,12 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .transfer__arrow { color: var(--amber); font-weight: 800; }
 .transfer__to { font-weight: 600; }
 .transfer__amount { font-weight: 700; color: var(--teal); white-space: nowrap; }
+.transfer--actionable { grid-template-columns: 1fr auto; gap: 10px; }
+.transfer__line { display: grid; grid-template-columns: 1fr auto 1fr auto; align-items: center; gap: 8px; min-width: 0; }
+.btn--sm { padding: 7px 12px; font-size: 13px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.pay__line { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pay__amount { color: var(--teal); white-space: nowrap; }
 .balance { font-weight: 700; font-size: 14px; }
 .balance--pos { color: var(--pos); }
 .balance--neg { color: var(--neg); }

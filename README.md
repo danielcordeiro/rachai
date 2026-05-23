@@ -23,7 +23,10 @@ o **menor número possível de transferências**.
 - Aba **Painel**: cards de resumo (total, média, nº de despesas/pessoas), rosca de
   participação no consumo, total por pessoa (**pagou x consumiu**) e ranking das
   maiores despesas. Gráficos em SVG puro, sem dependências.
-- Aba **Acerto**: saldo de cada um + transferências mínimas + copiar resumo.
+- Aba **Acerto**: **saldo vivo** = despesas − consumo − **pagamentos já registrados**.
+  Mostra só o que ainda falta acertar, com botão **"✓ Pago"** para registrar cada
+  transferência (e **pagamento manual** para valores parciais). Despesas lançadas
+  *depois* do acerto recalculam sozinhas sem perder os pagamentos já feitos.
 - Aba **Compras**: lista de itens (nome + quantidade), marcar como **comprado** e
   registrar **o que sobrou** e **o que faltou** — fica salvo no evento para
   consultar no próximo. Copiar lista para mandar no grupo.
