@@ -58,4 +58,17 @@ export const db = {
 
   setEventClosed: (eventId, closed) =>
     rpc("set_event_closed", { p_event: eventId, p_closed: closed }),
+
+  addShoppingItem: (eventId, name, qty) =>
+    rpc("add_shopping_item", { p_event: eventId, p_name: name, p_qty: qty }),
+  updateShoppingItem: (itemId, name, qty, bought, leftover, missing) =>
+    rpc("update_shopping_item", {
+      p_item: itemId,
+      p_name: name,
+      p_qty: qty,
+      p_bought: bought,
+      p_leftover: leftover,
+      p_missing: missing,
+    }),
+  deleteShoppingItem: (itemId) => rpc("delete_shopping_item", { p_item: itemId }),
 };

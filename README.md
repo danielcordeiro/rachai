@@ -21,6 +21,9 @@ o **menor número possível de transferências**.
   (Todos / multi-seleção / atalho por grupo).
 - **"Quem é você?"** salvo no aparelho → já preenche você como pagador.
 - Aba **Acerto**: saldo de cada um + transferências mínimas + copiar resumo.
+- Aba **Compras**: lista de itens (nome + quantidade), marcar como **comprado** e
+  registrar **o que sobrou** e **o que faltou** — fica salvo no evento para
+  consultar no próximo. Copiar lista para mandar no grupo.
 - Mobile-first, valores em centavos (sem erro de arredondamento — a soma fecha).
 
 ---

@@ -55,6 +55,19 @@ create table if not exists public.expense_shares (
   primary key (expense_id, person_id)
 );
 
+-- Lista de compras do evento (independente das despesas).
+create table if not exists public.shopping_items (
+  id         uuid primary key default gen_random_uuid(),
+  event_id   uuid not null references public.events(id) on delete cascade,
+  name       text not null,
+  qty        text not null default '',   -- quantidade planejada (texto livre: "2 kg")
+  bought     boolean not null default false,
+  leftover   text not null default '',   -- "sobrou" (preenchido após o evento)
+  missing    text not null default '',   -- "faltou" (preenchido após o evento)
+  created_at timestamptz not null default now()
+);
+create index if not exists shopping_event_idx on public.shopping_items(event_id);
+
 -- ----------------------------------------------------------------------------
 -- RLS: habilita e NÃO cria policy pública.
 -- Assim a anon key (pública) não consegue ler/escrever direto nas tabelas;
@@ -66,6 +79,7 @@ alter table public.groups         enable row level security;
 alter table public.group_members  enable row level security;
 alter table public.expenses       enable row level security;
 alter table public.expense_shares enable row level security;
+alter table public.shopping_items enable row level security;
 
 -- ============================================================================
 -- Funções RPC (gateway). SECURITY DEFINER => rodam como dono e ignoram a RLS.
@@ -120,7 +134,13 @@ as $$
                                      from expense_shares s where s.expense_id = x.id),
                                     '[]'::json))
                                 order by x.created_at)
-                        from expenses x where x.event_id = e.id), '[]'::json)
+                        from expenses x where x.event_id = e.id), '[]'::json),
+    'shopping', coalesce((select json_agg(json_build_object(
+                                  'id', i.id, 'name', i.name, 'qty', i.qty,
+                                  'bought', i.bought, 'leftover', i.leftover,
+                                  'missing', i.missing)
+                                order by i.created_at)
+                        from shopping_items i where i.event_id = e.id), '[]'::json)
   ) end
   from events e where e.id = p_event;
 $$;
@@ -292,6 +312,58 @@ begin
 end;
 $$;
 
+-- Lista de compras -------------------------------------------------------------
+create or replace function public.add_shopping_item(p_event uuid, p_name text, p_qty text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_id uuid;
+begin
+  if coalesce(btrim(p_name), '') = '' then
+    raise exception 'Nome do item é obrigatório';
+  end if;
+  insert into shopping_items(event_id, name, qty)
+    values (p_event, btrim(p_name), coalesce(btrim(p_qty), ''))
+    returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.update_shopping_item(
+  p_item uuid, p_name text, p_qty text,
+  p_bought boolean, p_leftover text, p_missing text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(btrim(p_name), '') = '' then
+    raise exception 'Nome do item é obrigatório';
+  end if;
+  update shopping_items
+     set name = btrim(p_name),
+         qty = coalesce(btrim(p_qty), ''),
+         bought = coalesce(p_bought, false),
+         leftover = coalesce(btrim(p_leftover), ''),
+         missing = coalesce(btrim(p_missing), '')
+   where id = p_item;
+end;
+$$;
+
+create or replace function public.delete_shopping_item(p_item uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from shopping_items where id = p_item;
+end;
+$$;
+
 -- ----------------------------------------------------------------------------
 -- Permissões: anon e authenticated podem EXECUTAR as funções (e nada mais).
 -- ----------------------------------------------------------------------------
@@ -309,5 +381,8 @@ grant execute on function
   public.add_expense(uuid, uuid, text, integer, uuid[]),
   public.update_expense(uuid, uuid, text, integer, uuid[]),
   public.delete_expense(uuid),
-  public.set_event_closed(uuid, boolean)
+  public.set_event_closed(uuid, boolean),
+  public.add_shopping_item(uuid, text, text),
+  public.update_shopping_item(uuid, text, text, boolean, text, text),
+  public.delete_shopping_item(uuid)
 to anon, authenticated;

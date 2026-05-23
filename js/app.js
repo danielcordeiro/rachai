@@ -210,12 +210,14 @@ function renderEvent() {
   const { event } = state.snapshot;
   const tabs = el("nav", { class: "tabs" }, [
     tabBtn("despesas", "Despesas"),
+    tabBtn("compras", "Compras"),
     tabBtn("pessoas", "Pessoas"),
     tabBtn("acerto", "Acerto"),
   ]);
 
   const body = el("div", { class: "tabbody" });
   if (state.tab === "pessoas") body.append(peopleTab());
+  else if (state.tab === "compras") body.append(shoppingTab());
   else if (state.tab === "acerto") body.append(settlementTab());
   else body.append(expensesTab());
 
@@ -665,6 +667,148 @@ async function copyResume(transfers) {
   ];
   const ok = await copyText(lines.join("\n"));
   toast(ok ? "Resumo copiado!" : "Não consegui copiar.", ok ? "success" : "error");
+}
+
+// ---------------------------------------------------------------------------
+// ABA COMPRAS (lista de compras)
+// ---------------------------------------------------------------------------
+function shoppingTab() {
+  const items = state.snapshot.shopping || [];
+  const wrap = el("div", {});
+
+  // adicionar item rápido
+  const nameInput = el("input", { class: "input", placeholder: "Item (ex.: Gelo, Cerveja, Isca)", maxlength: "80" });
+  const qtyInput = el("input", { class: "input input--qty", placeholder: "Qtd", maxlength: "20" });
+  const add = async () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    try {
+      await db.addShoppingItem(state.eventId, name, qtyInput.value.trim());
+      nameInput.value = "";
+      qtyInput.value = "";
+      await reload();
+      nameInput.focus();
+    } catch (e) { toast(e.message, "error"); }
+  };
+  nameInput.addEventListener("keydown", (e) => e.key === "Enter" && qtyInput.focus());
+  qtyInput.addEventListener("keydown", (e) => e.key === "Enter" && add());
+
+  wrap.append(
+    el("div", { class: "addrow" }, [
+      nameInput,
+      qtyInput,
+      el("button", { class: "btn btn--primary", text: "Add", onClick: add }),
+    ])
+  );
+
+  if (!items.length) {
+    wrap.append(el("p", { class: "muted pad", text: "Lista vazia. Adicione os itens que precisam ser comprados." }));
+    return wrap;
+  }
+
+  const boughtCount = items.filter((i) => i.bought).length;
+  wrap.append(
+    el("div", { class: "summary" }, [
+      el("span", { text: "Comprados" }),
+      el("strong", { text: `${boughtCount}/${items.length}` }),
+    ])
+  );
+
+  wrap.append(
+    el("ul", { class: "list" }, items.map((item) => {
+      const check = el("input", { type: "checkbox", checked: item.bought ? "" : null,
+        onChange: () => toggleBought(item) });
+      const badges = el("div", { class: "shop__badges" }, [
+        item.leftover ? el("span", { class: "tag tag--left", text: `↩️ sobrou: ${item.leftover}` }) : null,
+        item.missing ? el("span", { class: "tag tag--miss", text: `⚠️ faltou: ${item.missing}` }) : null,
+      ]);
+      return el("li", { class: "shop" + (item.bought ? " shop--done" : "") }, [
+        el("label", { class: "shop__check" }, [check]),
+        el("div", { class: "shop__main", onClick: () => openItemForm(item) }, [
+          el("div", { class: "shop__name" }, [
+            el("span", { text: item.name }),
+            item.qty ? el("span", { class: "shop__qty", text: item.qty }) : null,
+          ]),
+          (item.leftover || item.missing) ? badges : null,
+        ]),
+        iconBtn("🗑️", "Excluir", () => removeItem(item)),
+      ]);
+    }))
+  );
+
+  wrap.append(
+    el("button", { class: "btn btn--ghost btn--block", text: "📋 Copiar lista", onClick: () => copyShopping(items) })
+  );
+
+  return wrap;
+}
+
+async function toggleBought(item) {
+  try {
+    await db.updateShoppingItem(item.id, item.name, item.qty, !item.bought, item.leftover, item.missing);
+    await reload();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function openItemForm(item) {
+  const nameInput = el("input", { class: "input", value: item.name, maxlength: "80" });
+  const qtyInput = el("input", { class: "input", value: item.qty, placeholder: "ex.: 2 kg, 3 caixas", maxlength: "20" });
+  const boughtInput = el("input", { type: "checkbox", checked: item.bought ? "" : null });
+  const leftoverInput = el("input", { class: "input", value: item.leftover, placeholder: "o que sobrou (ex.: 1 pacote)", maxlength: "80" });
+  const missingInput = el("input", { class: "input", value: item.missing, placeholder: "o que faltou (ex.: mais 2 kg)", maxlength: "80" });
+
+  const save = async () => {
+    const name = nameInput.value.trim();
+    if (!name) return toast("Nome do item é obrigatório.", "error");
+    try {
+      await db.updateShoppingItem(
+        item.id, name, qtyInput.value.trim(),
+        boughtInput.checked, leftoverInput.value.trim(), missingInput.value.trim()
+      );
+      close();
+      await reload();
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  const { close } = openModal("Editar item",
+    el("div", {}, [
+      el("label", { class: "label", text: "Item" }),
+      nameInput,
+      el("label", { class: "label", text: "Quantidade" }),
+      qtyInput,
+      el("label", { class: "check check--inline" }, [boughtInput, el("span", { text: "Comprado" })]),
+      el("hr", { class: "divider" }),
+      el("p", { class: "muted small", text: "Preencha após o evento — fica salvo para consultar no próximo:" }),
+      el("label", { class: "label", text: "Sobrou" }),
+      leftoverInput,
+      el("label", { class: "label", text: "Faltou" }),
+      missingInput,
+      el("button", { class: "btn btn--primary btn--block", text: "Salvar", onClick: save }),
+    ])
+  );
+}
+
+async function removeItem(item) {
+  if (!confirmAction(`Excluir "${item.name}" da lista?`)) return;
+  try {
+    await db.deleteShoppingItem(item.id);
+    await reload();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function copyShopping(items) {
+  const { event } = state.snapshot;
+  const lines = [`🛒 Lista — ${event.name}`];
+  for (const i of items) {
+    const mark = i.bought ? "✅" : "⬜";
+    const qty = i.qty ? ` (${i.qty})` : "";
+    let extra = "";
+    if (i.leftover) extra += ` — sobrou: ${i.leftover}`;
+    if (i.missing) extra += ` — faltou: ${i.missing}`;
+    lines.push(`${mark} ${i.name}${qty}${extra}`);
+  }
+  const ok = await copyText(lines.join("\n"));
+  toast(ok ? "Lista copiada!" : "Não consegui copiar.", ok ? "success" : "error");
 }
 
 // ---------------------------------------------------------------------------
