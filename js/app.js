@@ -1,7 +1,7 @@
 // Rachaí — app principal: roteamento por hash, telas e formulários.
 import { db, isConfigured } from "./db.js";
 import { el, fmtBRL, parseAmountToCents, toast, confirmAction, copyText, clear } from "./ui.js";
-import { computeBalances, minimizeTransactions, totalSpent } from "./settlement.js";
+import { computeBalances, minimizeTransactions, totalSpent, computeTotals } from "./settlement.js";
 
 const root = () => document.getElementById("app");
 
@@ -211,6 +211,7 @@ function renderEvent() {
   const tabs = el("nav", { class: "tabs" }, [
     tabBtn("despesas", "Despesas"),
     tabBtn("compras", "Compras"),
+    tabBtn("painel", "Painel"),
     tabBtn("pessoas", "Pessoas"),
     tabBtn("acerto", "Acerto"),
   ]);
@@ -218,6 +219,7 @@ function renderEvent() {
   const body = el("div", { class: "tabbody" });
   if (state.tab === "pessoas") body.append(peopleTab());
   else if (state.tab === "compras") body.append(shoppingTab());
+  else if (state.tab === "painel") body.append(dashboardTab());
   else if (state.tab === "acerto") body.append(settlementTab());
   else body.append(expensesTab());
 
@@ -667,6 +669,140 @@ async function copyResume(transfers) {
   ];
   const ok = await copyText(lines.join("\n"));
   toast(ok ? "Resumo copiado!" : "Não consegui copiar.", ok ? "success" : "error");
+}
+
+// ---------------------------------------------------------------------------
+// ABA PAINEL (dashboard)
+// ---------------------------------------------------------------------------
+const PALETTE = ["#0f766e", "#f59e0b", "#3b82f6", "#ec4899", "#8b5cf6",
+  "#10b981", "#ef4444", "#0ea5e9", "#f97316", "#6366f1"];
+
+function dashboardTab() {
+  const { people, expenses } = state.snapshot;
+  const wrap = el("div", {});
+
+  if (!expenses.length) {
+    wrap.append(el("p", { class: "muted pad", text: "Sem dados ainda. Lance algumas despesas para ver o painel." }));
+    return wrap;
+  }
+
+  const total = totalSpent(expenses);
+  const totals = computeTotals(people, expenses);
+  const nPeople = people.length || 1;
+
+  // --- cards de resumo ---
+  wrap.append(
+    el("div", { class: "kpis" }, [
+      kpi("Total do evento", fmtBRL(total)),
+      kpi("Média por pessoa", fmtBRL(Math.round(total / nPeople))),
+      kpi("Despesas", String(expenses.length)),
+      kpi("Pessoas", String(people.length)),
+    ])
+  );
+
+  // --- rosca: participação no consumo ---
+  const consumers = people
+    .map((p) => ({ p, consumed: totals.get(p.id)?.consumed || 0 }))
+    .filter((r) => r.consumed > 0)
+    .sort((a, b) => b.consumed - a.consumed);
+
+  if (consumers.length) {
+    wrap.append(el("h3", { class: "section", text: "Participação no consumo" }));
+    wrap.append(donutCard(consumers, total));
+  }
+
+  // --- total por pessoa: pagou x consumiu ---
+  wrap.append(el("h3", { class: "section", text: "Por pessoa — pagou x consumiu" }));
+  const maxVal = Math.max(1, ...people.map((p) => {
+    const t = totals.get(p.id); return Math.max(t.paid, t.consumed);
+  }));
+  wrap.append(
+    el("ul", { class: "list" }, people.map((p) => {
+      const t = totals.get(p.id);
+      return el("li", { class: "pp" }, [
+        el("div", { class: "pp__name", text: p.name }),
+        el("div", { class: "pp__bars" }, [
+          ppBar("Pagou", t.paid, maxVal, "bar--paid"),
+          ppBar("Consumiu", t.consumed, maxVal, "bar--cons"),
+        ]),
+      ]);
+    }))
+  );
+
+  // --- ranking de despesas ---
+  wrap.append(el("h3", { class: "section", text: "Maiores despesas" }));
+  const ranked = [...expenses].sort((a, b) => b.amount_cents - a.amount_cents).slice(0, 8);
+  const maxExp = ranked[0].amount_cents;
+  wrap.append(
+    el("ol", { class: "ranking" }, ranked.map((x, i) =>
+      el("li", { class: "rank" }, [
+        el("span", { class: "rank__pos", text: String(i + 1) }),
+        el("div", { class: "rank__body" }, [
+          el("div", { class: "rank__top" }, [
+            el("span", { class: "rank__desc", text: x.description || "Despesa" }),
+            el("span", { class: "rank__amount", text: fmtBRL(x.amount_cents) }),
+          ]),
+          el("div", { class: "rank__track" }, [
+            el("div", { class: "rank__fill", style: `width:${Math.round((x.amount_cents / maxExp) * 100)}%` }),
+          ]),
+          el("div", { class: "rank__meta", text: `Pagou: ${nameOf(x.payer_id)}` }),
+        ]),
+      ])
+    ))
+  );
+
+  return wrap;
+}
+
+function kpi(label, value) {
+  return el("div", { class: "kpi" }, [
+    el("div", { class: "kpi__value", text: value }),
+    el("div", { class: "kpi__label", text: label }),
+  ]);
+}
+
+function ppBar(label, cents, max, cls) {
+  return el("div", { class: "bar" }, [
+    el("div", { class: "bar__label" }, [
+      el("span", { text: label }),
+      el("span", { class: "bar__val", text: fmtBRL(cents) }),
+    ]),
+    el("div", { class: "bar__track" }, [
+      el("div", { class: `bar__fill ${cls}`, style: `width:${Math.round((cents / max) * 100)}%` }),
+    ]),
+  ]);
+}
+
+function donutCard(consumers, total) {
+  const C = 2 * Math.PI * 78; // circunferência (r=78)
+  let acc = 0;
+  let segs = "";
+  consumers.forEach((r, i) => {
+    const len = (r.consumed / total) * C;
+    const color = PALETTE[i % PALETTE.length];
+    segs += `<circle cx="100" cy="100" r="78" fill="none" stroke="${color}" stroke-width="30" `
+      + `stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}"></circle>`;
+    acc += len;
+  });
+  const svg = el("div", { class: "donut" });
+  svg.innerHTML =
+    `<svg viewBox="0 0 200 200" role="img" aria-label="Participação no consumo">
+       <circle cx="100" cy="100" r="78" fill="none" stroke="#eceef1" stroke-width="30"></circle>
+       <g transform="rotate(-90 100 100)">${segs}</g>
+       <text x="100" y="94" text-anchor="middle" class="donut__total">${fmtBRL(total)}</text>
+       <text x="100" y="114" text-anchor="middle" class="donut__cap">consumido</text>
+     </svg>`;
+
+  const legend = el("ul", { class: "legend" }, consumers.map((r, i) => {
+    const pct = ((r.consumed / total) * 100).toFixed(1).replace(".", ",");
+    return el("li", { class: "legend__item" }, [
+      el("span", { class: "legend__dot", style: `background:${PALETTE[i % PALETTE.length]}` }),
+      el("span", { class: "legend__name", text: r.p.name }),
+      el("span", { class: "legend__val", text: `${fmtBRL(r.consumed)} · ${pct}%` }),
+    ]);
+  }));
+
+  return el("div", { class: "card donutcard" }, [svg, legend]);
 }
 
 // ---------------------------------------------------------------------------

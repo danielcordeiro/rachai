@@ -20,6 +20,9 @@ o **menor número possível de transferências**.
 - Despesas com: descrição, valor, **quem pagou** e **participantes**
   (Todos / multi-seleção / atalho por grupo).
 - **"Quem é você?"** salvo no aparelho → já preenche você como pagador.
+- Aba **Painel**: cards de resumo (total, média, nº de despesas/pessoas), rosca de
+  participação no consumo, total por pessoa (**pagou x consumiu**) e ranking das
+  maiores despesas. Gráficos em SVG puro, sem dependências.
 - Aba **Acerto**: saldo de cada um + transferências mínimas + copiar resumo.
 - Aba **Compras**: lista de itens (nome + quantidade), marcar como **comprado** e
   registrar **o que sobrou** e **o que faltou** — fica salvo no evento para

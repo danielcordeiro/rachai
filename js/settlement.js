@@ -64,3 +64,29 @@ export function minimizeTransactions(balances) {
 export function totalSpent(expenses) {
   return expenses.reduce((s, x) => s + x.amount_cents, 0);
 }
+
+/**
+ * Por pessoa: quanto pagou (desembolsou) e quanto consumiu (parte no rateio).
+ * Mesma distribuição de centavos do acerto, então a soma de "consumiu" = total.
+ * @returns {Map<string, {paid: number, consumed: number}>} valores em centavos
+ */
+export function computeTotals(people, expenses) {
+  const t = new Map();
+  for (const p of people) t.set(p.id, { paid: 0, consumed: 0 });
+
+  for (const x of expenses) {
+    const parts = x.participant_ids || [];
+    const n = parts.length;
+    if (n === 0) continue;
+    const base = Math.floor(x.amount_cents / n);
+    const remainder = x.amount_cents - base * n;
+
+    const payer = t.get(x.payer_id);
+    if (payer) payer.paid += x.amount_cents;
+    parts.forEach((pid, i) => {
+      const row = t.get(pid);
+      if (row) row.consumed += base + (i < remainder ? 1 : 0);
+    });
+  }
+  return t;
+}
