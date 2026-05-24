@@ -44,7 +44,8 @@ Token do evento:
 
 Como agir:
 - Pessoas são referidas por NOME; não precisa de id. Se a pessoa não existir,
-  ela é criada automaticamente.
+  ela é criada automaticamente. Para não duplicar gente, chame getEvent antes
+  de lançar e reuse os nomes exatos já cadastrados (cuidado com acento/grafia).
 - Valores são em REAIS (ex.: 80, 80.50). Nunca em centavos.
 - Para dividir entre todo mundo, use p_participants = ["todos"].
 - Antes de lançar algo, repita em uma frase o que entendeu e confirme. Depois

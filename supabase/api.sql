@@ -25,13 +25,14 @@ set search_path = public
 as $$
 declare v_token text;
 begin
-  select api_token into v_token from events where id = p_event;
-  if v_token is null then
-    if not exists (select 1 from events where id = p_event) then
-      raise exception 'Evento não encontrado';
-    end if;
-    v_token := 'rch_' || replace(gen_random_uuid()::text, '-', '');
-    update events set api_token = v_token where id = p_event;
+  -- atômico: o UPDATE pega lock de linha, então chamadas concorrentes no
+  -- primeiro acesso não geram tokens divergentes (a 2ª relê o já gravado).
+  update events
+     set api_token = coalesce(api_token, 'rch_' || replace(gen_random_uuid()::text, '-', ''))
+   where id = p_event
+   returning api_token into v_token;
+  if not found then
+    raise exception 'Evento não encontrado';
   end if;
   return v_token;
 end;
@@ -49,7 +50,7 @@ begin
   if not exists (select 1 from events where id = p_event) then
     raise exception 'Evento não encontrado';
   end if;
-  v_token := 'rch_' || encode(gen_random_bytes(16), 'hex');
+  v_token := 'rch_' || replace(gen_random_uuid()::text, '-', '');
   update events set api_token = v_token where id = p_event;
   return v_token;
 end;
@@ -180,15 +181,8 @@ begin
     end loop;
   end if;
 
-  if v_ids is null or array_length(v_ids, 1) is null then
-    raise exception 'Nenhum participante para ratear';
-  end if;
-
-  insert into expenses(event_id, payer_id, description, amount_cents)
-    values (v_event, v_payer, coalesce(btrim(p_description), ''), v_cents)
-    returning id into v_expense;
-  insert into expense_shares(expense_id, person_id)
-    select v_expense, unnest(v_ids);
+  -- delega a persistência/validação ao add_expense do schema.sql
+  v_expense := add_expense(v_event, v_payer, p_description, v_cents, v_ids);
 
   return json_build_object(
     'ok', true, 'expense_id', v_expense,

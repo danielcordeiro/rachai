@@ -739,9 +739,12 @@ function connectTab() {
   wrap.append(el("p", { class: "muted", text:
     "Deixe uma IA (ChatGPT, Claude…) cadastrar despesas, compras e pagamentos neste evento por você — é só conversar." }));
 
-  // Token do evento (gerado sob demanda) ---------------------------------------
+  // Elementos preenchidos quando o token chega (uma única chamada para os dois).
   const tokenField = el("code", { class: "token", text: "gerando…" });
   const copyBtn = el("button", { class: "btn btn--ghost btn--sm", text: "Copiar token", disabled: "" });
+  const promptArea = el("textarea", { class: "input prompt", rows: "7", readonly: "" }, []);
+  const claudeBtn = el("button", { class: "btn btn--ghost btn--sm", text: "Copiar instruções", disabled: "" });
+
   db.getApiToken(state.eventId).then((tok) => {
     tokenField.textContent = tok;
     copyBtn.removeAttribute("disabled");
@@ -749,7 +752,20 @@ function connectTab() {
       const ok = await copyText(tok);
       toast(ok ? "Token copiado!" : "Não consegui copiar.", ok ? "success" : "error");
     };
-  }, (e) => { tokenField.textContent = "erro ao gerar token"; toast(e.message, "error"); });
+
+    const base = (cfg.SUPABASE_URL || "").replace(/\/$/, "") + "/rest/v1/rpc";
+    const text = montaPromptIA(base, cfg.SUPABASE_ANON_KEY || "", tok);
+    promptArea.value = text;
+    claudeBtn.removeAttribute("disabled");
+    claudeBtn.onclick = async () => {
+      const ok = await copyText(text);
+      toast(ok ? "Instruções copiadas!" : "Não consegui copiar.", ok ? "success" : "error");
+    };
+  }, (e) => {
+    tokenField.textContent = "erro ao gerar token";
+    promptArea.value = "Não foi possível gerar o token. Tente recarregar a página.";
+    toast(e.message, "error");
+  });
 
   wrap.append(el("h3", { class: "section", text: "Seu token deste evento" }));
   wrap.append(el("div", { class: "card" }, [
@@ -771,18 +787,6 @@ function connectTab() {
 
   // Claude Code / outras IAs com acesso a HTTP ---------------------------------
   wrap.append(el("h3", { class: "section", text: "Usa Claude Code, Cursor ou outra IA com acesso à web?" }));
-  const promptArea = el("textarea", { class: "input prompt", rows: "7", readonly: "" }, []);
-  const claudeBtn = el("button", { class: "btn btn--ghost btn--sm", text: "Copiar instruções", disabled: "" });
-  db.getApiToken(state.eventId).then((tok) => {
-    const base = (cfg.SUPABASE_URL || "").replace(/\/$/, "") + "/rest/v1/rpc";
-    const text = montaPromptIA(base, cfg.SUPABASE_ANON_KEY || "", tok);
-    promptArea.value = text;
-    claudeBtn.removeAttribute("disabled");
-    claudeBtn.onclick = async () => {
-      const ok = await copyText(text);
-      toast(ok ? "Instruções copiadas!" : "Não consegui copiar.", ok ? "success" : "error");
-    };
-  }, () => {});
   wrap.append(el("div", { class: "card" }, [
     el("p", { class: "muted small", text:
       "Cole o bloco abaixo na sua IA. Ela passa a cadastrar via API (curl), sem instalar nada." }),
@@ -810,7 +814,7 @@ function montaPromptIA(base, anon, token) {
     "• /api_add_shopping_item {p_token, p_name, p_qty}",
     "• /api_mark_shopping_bought {p_token, p_name, p_bought}",
     "",
-    "Pessoas são referenciadas por NOME (cria sozinho se não existir). Antes de lançar, confirme comigo o que entendeu.",
+    "Pessoas são referenciadas por NOME (cria sozinho se não existir). Para evitar duplicar gente, chame /api_get_event antes e reuse os nomes exatos já cadastrados. Antes de lançar, confirme comigo o que entendeu.",
   ].join("\n");
 }
 
