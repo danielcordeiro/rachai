@@ -24,6 +24,21 @@ async function rpc(fn, params) {
   return data;
 }
 
+/** Id anônimo do navegador (não-PII), só para contar visitantes únicos. */
+function sessionId() {
+  const KEY = "rachai:sid";
+  try {
+    let sid = localStorage.getItem(KEY);
+    if (!sid) {
+      sid = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()).slice(2);
+      localStorage.setItem(KEY, sid);
+    }
+    return sid;
+  } catch {
+    return ""; // localStorage indisponível: segue sem sid
+  }
+}
+
 export const db = {
   createEvent: (name) => rpc("create_event", { p_name: name }),
   getEvent: (eventId) => rpc("get_event", { p_event: eventId }),
@@ -75,4 +90,15 @@ export const db = {
   addPayment: (eventId, fromId, toId, amountCents) =>
     rpc("add_payment", { p_event: eventId, p_from: fromId, p_to: toId, p_amount_cents: amountCents }),
   deletePayment: (paymentId) => rpc("delete_payment", { p_payment: paymentId }),
+
+  /** Registra um evento de uso. Fire-and-forget: nunca lança nem bloqueia a UI. */
+  track(name, path) {
+    if (!supabase) return;
+    supabase.rpc("track", {
+      p_name: name,
+      p_path: path || "",
+      p_session: sessionId(),
+      p_referrer: (typeof document !== "undefined" && document.referrer) || "",
+    }).then(() => {}, () => {}); // ignora qualquer falha
+  },
 };
