@@ -109,7 +109,7 @@ function shell(...children) {
 function header(subtitle) {
   return el("header", { class: "topbar" }, [
     el("a", { class: "brand", href: "#/" }, [
-      el("span", { class: "brand__logo", text: "🧮" }),
+      el("img", { class: "brand__logo", src: "assets/logo.png", alt: "Rachaí", width: "28", height: "28" }),
       el("span", { class: "brand__name", text: "Rachaí" }),
     ]),
     subtitle ? el("span", { class: "topbar__sub", text: subtitle }) : null,

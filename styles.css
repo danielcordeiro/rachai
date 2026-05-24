@@ -36,7 +36,7 @@ code { background: var(--teal-soft); padding: 1px 6px; border-radius: 6px; font-
   background: var(--teal); color: #fff;
 }
 .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: #fff; }
-.brand__logo { font-size: 22px; }
+.brand__logo { width: 28px; height: 28px; border-radius: 7px; display: block; }
 .brand__name { font-weight: 800; font-size: 19px; letter-spacing: .2px; }
 .topbar__sub { margin-left: auto; opacity: .85; font-size: 13px; }
 
