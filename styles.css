@@ -215,6 +215,17 @@ select.input { appearance: none; background-image: url("data:image/svg+xml,%3Csv
 .balance--neg { color: var(--neg); }
 .balance--zero { color: var(--muted); }
 
+/* ---- apoio (Pix) ---- */
+.donate {
+  margin-top: 28px; text-align: center;
+  background: var(--teal-soft); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 18px 16px;
+}
+.donate__title { margin: 0 0 4px; font-weight: 800; color: var(--teal-dark); font-size: 15px; }
+.donate__sub { margin: 0 auto 14px; max-width: 380px; color: var(--muted); font-size: 13px; }
+.donate .btn { display: inline-flex; }
+.donate__name { margin: 10px 0 0; }
+
 /* ---- empty / spinner ---- */
 .empty { text-align: center; color: var(--muted); }
 .empty h2 { color: var(--ink); margin-bottom: 8px; }
