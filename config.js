@@ -10,4 +10,7 @@ window.RACHAI_CONFIG = {
     key: "0e93184e-08d3-410b-a397-651a73653849",
     name: "Apoie o Rachaí",
   },
+
+  // GPT do Rachaí publicado na loja do ChatGPT (aba "IA" mostra link direto).
+  GPT_URL: "https://chatgpt.com/g/g-6a1310ee8014819194969fcf709e795d-rachai",
 };
