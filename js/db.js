@@ -91,6 +91,9 @@ export const db = {
     rpc("add_payment", { p_event: eventId, p_from: fromId, p_to: toId, p_amount_cents: amountCents }),
   deletePayment: (paymentId) => rpc("delete_payment", { p_payment: paymentId }),
 
+  getApiToken: (eventId) => rpc("get_api_token", { p_event: eventId }),
+  rotateApiToken: (eventId) => rpc("rotate_api_token", { p_event: eventId }),
+
   /** Registra um evento de uso. Fire-and-forget: nunca lança nem bloqueia a UI. */
   track(name, path) {
     if (!supabase) return;

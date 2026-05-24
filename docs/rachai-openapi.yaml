@@ -1,0 +1,144 @@
+openapi: 3.1.0
+info:
+  title: Rachaí API
+  description: >-
+    API para gerenciar um evento do Rachaí (dividir contas) por nome de pessoa e
+    valores em reais. Toda operação exige o token do evento no corpo (p_token).
+  version: "1.0.0"
+servers:
+  - url: https://wkuykhomucxskelbcpmi.supabase.co/rest/v1
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: apikey
+  schemas:
+    TokenBody:
+      type: object
+      required: [p_token]
+      properties:
+        p_token:
+          type: string
+          description: Token do evento (começa com rch_). O usuário fornece.
+security:
+  - apiKeyAuth: []
+paths:
+  /rpc/api_get_event:
+    post:
+      operationId: getEvent
+      summary: Lê o estado do evento (pessoas, despesas, compras, pagamentos).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenBody"
+      responses:
+        "200":
+          description: Estado atual do evento.
+  /rpc/api_add_expense:
+    post:
+      operationId: addExpense
+      summary: Lança uma despesa. Valor em reais; pessoas por nome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [p_token, p_payer, p_amount]
+              properties:
+                p_token:
+                  type: string
+                p_payer:
+                  type: string
+                  description: Nome de quem pagou (cria a pessoa se não existir).
+                p_description:
+                  type: string
+                  description: Descrição da despesa (ex. "carvão").
+                p_amount:
+                  type: number
+                  description: Valor em reais (ex. 80.50).
+                p_participants:
+                  type: array
+                  items:
+                    type: string
+                  description: >-
+                    Nomes entre quem dividir. Use ["todos"] para dividir entre
+                    todas as pessoas do evento. Vazio também significa todos.
+      responses:
+        "200":
+          description: Despesa criada.
+  /rpc/api_add_payment:
+    post:
+      operationId: addPayment
+      summary: Registra um pagamento/acerto entre duas pessoas (valor em reais).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [p_token, p_from, p_to, p_amount]
+              properties:
+                p_token: { type: string }
+                p_from: { type: string, description: Quem pagou (nome). }
+                p_to: { type: string, description: Quem recebeu (nome). }
+                p_amount: { type: number, description: Valor em reais. }
+      responses:
+        "200":
+          description: Pagamento registrado.
+  /rpc/api_add_person:
+    post:
+      operationId: addPerson
+      summary: Adiciona uma pessoa ao evento.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [p_token, p_name]
+              properties:
+                p_token: { type: string }
+                p_name: { type: string }
+      responses:
+        "200":
+          description: Pessoa adicionada.
+  /rpc/api_add_shopping_item:
+    post:
+      operationId: addShoppingItem
+      summary: Adiciona um item à lista de compras.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [p_token, p_name]
+              properties:
+                p_token: { type: string }
+                p_name: { type: string }
+                p_qty: { type: string, description: Quantidade (texto livre, ex. "2 kg"). }
+      responses:
+        "200":
+          description: Item adicionado.
+  /rpc/api_mark_shopping_bought:
+    post:
+      operationId: markShoppingBought
+      summary: Marca (ou desmarca) um item da lista como comprado, pelo nome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [p_token, p_name]
+              properties:
+                p_token: { type: string }
+                p_name: { type: string }
+                p_bought: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Item atualizado.

@@ -216,6 +216,7 @@ function renderEvent() {
     tabBtn("painel", "Painel"),
     tabBtn("pessoas", "Pessoas"),
     tabBtn("acerto", "Acerto"),
+    tabBtn("ia", "🤖 IA"),
   ]);
 
   const body = el("div", { class: "tabbody" });
@@ -223,6 +224,7 @@ function renderEvent() {
   else if (state.tab === "compras") body.append(shoppingTab());
   else if (state.tab === "painel") body.append(dashboardTab());
   else if (state.tab === "acerto") body.append(settlementTab());
+  else if (state.tab === "ia") body.append(connectTab());
   else body.append(expensesTab());
 
   shell(
@@ -725,6 +727,91 @@ function donationCard() {
     btn,
     pix.name ? el("p", { class: "donate__name muted small", text: pix.name }) : null,
   ]);
+}
+
+// ---------------------------------------------------------------------------
+// ABA IA (conectar uma IA para cadastrar por você)
+// ---------------------------------------------------------------------------
+function connectTab() {
+  const cfg = window.RACHAI_CONFIG || {};
+  const wrap = el("div", { class: "connect" });
+
+  wrap.append(el("p", { class: "muted", text:
+    "Deixe uma IA (ChatGPT, Claude…) cadastrar despesas, compras e pagamentos neste evento por você — é só conversar." }));
+
+  // Token do evento (gerado sob demanda) ---------------------------------------
+  const tokenField = el("code", { class: "token", text: "gerando…" });
+  const copyBtn = el("button", { class: "btn btn--ghost btn--sm", text: "Copiar token", disabled: "" });
+  db.getApiToken(state.eventId).then((tok) => {
+    tokenField.textContent = tok;
+    copyBtn.removeAttribute("disabled");
+    copyBtn.onclick = async () => {
+      const ok = await copyText(tok);
+      toast(ok ? "Token copiado!" : "Não consegui copiar.", ok ? "success" : "error");
+    };
+  }, (e) => { tokenField.textContent = "erro ao gerar token"; toast(e.message, "error"); });
+
+  wrap.append(el("h3", { class: "section", text: "Seu token deste evento" }));
+  wrap.append(el("div", { class: "card" }, [
+    el("div", { class: "token-row" }, [tokenField, copyBtn]),
+    el("p", { class: "muted small", text:
+      "Trate como uma senha: quem tem o token consegue editar este evento pela IA. Não compartilhe publicamente." }),
+  ]));
+
+  // ChatGPT --------------------------------------------------------------------
+  wrap.append(el("h3", { class: "section", text: "Tem ChatGPT?" }));
+  const gptSteps = el("ol", { class: "steps" }, [
+    el("li", {}, cfg.GPT_URL
+      ? [el("span", { text: "Abra o " }), el("a", { href: cfg.GPT_URL, target: "_blank", rel: "noopener", text: "GPT do Rachaí" })]
+      : "Procure o GPT \"Rachaí\" na loja de GPTs do ChatGPT (web ou app)."),
+    el("li", { text: "Cole seu token quando ele pedir." }),
+    el("li", { text: "Fale natural: \"adiciona cerveja 80 reais paga pela Maria, dividido entre todos\"." }),
+  ]);
+  wrap.append(el("div", { class: "card" }, [gptSteps]));
+
+  // Claude Code / outras IAs com acesso a HTTP ---------------------------------
+  wrap.append(el("h3", { class: "section", text: "Usa Claude Code, Cursor ou outra IA com acesso à web?" }));
+  const promptArea = el("textarea", { class: "input prompt", rows: "7", readonly: "" }, []);
+  const claudeBtn = el("button", { class: "btn btn--ghost btn--sm", text: "Copiar instruções", disabled: "" });
+  db.getApiToken(state.eventId).then((tok) => {
+    const base = (cfg.SUPABASE_URL || "").replace(/\/$/, "") + "/rest/v1/rpc";
+    const text = montaPromptIA(base, cfg.SUPABASE_ANON_KEY || "", tok);
+    promptArea.value = text;
+    claudeBtn.removeAttribute("disabled");
+    claudeBtn.onclick = async () => {
+      const ok = await copyText(text);
+      toast(ok ? "Instruções copiadas!" : "Não consegui copiar.", ok ? "success" : "error");
+    };
+  }, () => {});
+  wrap.append(el("div", { class: "card" }, [
+    el("p", { class: "muted small", text:
+      "Cole o bloco abaixo na sua IA. Ela passa a cadastrar via API (curl), sem instalar nada." }),
+    promptArea,
+    claudeBtn,
+  ]));
+
+  return wrap;
+}
+
+/** Monta o bloco de instruções que o usuário cola numa IA com acesso a HTTP. */
+function montaPromptIA(base, anon, token) {
+  return [
+    "Você vai gerenciar meu evento no Rachaí via API REST (curl).",
+    `Base: ${base}`,
+    "Em toda requisição use os headers:",
+    `  -H "apikey: ${anon}" -H "Content-Type: application/json"`,
+    `E inclua sempre no corpo: "p_token": "${token}"`,
+    "",
+    "Endpoints (POST, corpo JSON):",
+    "• /api_get_event {p_token} — vê o estado (pessoas, despesas, compras, saldos)",
+    "• /api_add_expense {p_token, p_payer, p_description, p_amount, p_participants} — p_amount em reais; p_participants é lista de nomes ou [\"todos\"]",
+    "• /api_add_payment {p_token, p_from, p_to, p_amount}",
+    "• /api_add_person {p_token, p_name}",
+    "• /api_add_shopping_item {p_token, p_name, p_qty}",
+    "• /api_mark_shopping_bought {p_token, p_name, p_bought}",
+    "",
+    "Pessoas são referenciadas por NOME (cria sozinho se não existir). Antes de lançar, confirme comigo o que entendeu.",
+  ].join("\n");
 }
 
 async function markPaid(t, btn) {

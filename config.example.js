@@ -14,4 +14,9 @@ window.RACHAI_CONFIG = {
   //   key: "seu-email@exemplo.com",     // ou só a chave avulsa
   //   name: "Apoie o Rachaí",           // legenda opcional sob o botão
   // },
+
+  // (opcional) Link do GPT do Rachaí publicado na loja do ChatGPT. Quando
+  // preenchido, a aba "IA" mostra um link direto; sem ele, instrui a buscar
+  // o GPT pelo nome.
+  // GPT_URL: "https://chatgpt.com/g/g-XXXX-rachai",
 };
