@@ -689,7 +689,39 @@ function settlementTab() {
     }))
   );
 
+  // apoio opcional ao projeto: aparece no rodapé do acerto, momento em que o
+  // app acabou de entregar valor. Só renderiza se houver Pix configurado.
+  const donate = donationCard();
+  if (donate) wrap.append(donate);
+
   return wrap;
+}
+
+/**
+ * Card discreto de "pague um café via Pix". Opt-in: só aparece se
+ * window.RACHAI_CONFIG.PIX trouxer um `payload` (Pix copia e cola) ou `key`
+ * (chave Pix avulsa). Sem config, retorna null e nada é exibido.
+ */
+function donationCard() {
+  const pix = (window.RACHAI_CONFIG || {}).PIX;
+  const value = pix && (pix.payload || pix.key);
+  if (!value) return null;
+
+  const btn = el("button", {
+    class: "btn btn--primary btn--sm",
+    text: pix.payload ? "💚 Pix copia e cola" : "💚 Copiar chave Pix",
+    onClick: async () => {
+      const ok = await copyText(value);
+      toast(ok ? "Pix copiado — é só colar no seu banco 💚" : "Não consegui copiar.", ok ? "success" : "error");
+    },
+  });
+
+  return el("div", { class: "donate" }, [
+    el("p", { class: "donate__title", text: "Curtiu o rachaí? ☕" }),
+    el("p", { class: "donate__sub", text: "É grátis e sem anúncio. Se ajudou, me paga um café — qualquer valor ajuda a manter de pé." }),
+    btn,
+    pix.name ? el("p", { class: "donate__name muted small", text: pix.name }) : null,
+  ]);
 }
 
 async function markPaid(t, btn) {
