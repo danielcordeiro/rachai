@@ -43,6 +43,7 @@ function parseRoute() {
 
 async function router() {
   const r = parseRoute();
+  db.track("pageview", r.name); // rota normalizada ('home'|'event'), sem ids
   if (r.name === "event") {
     if (state.eventId !== r.eventId) {
       state.eventId = r.eventId;
@@ -167,6 +168,7 @@ function renderHome() {
     btn.textContent = "Criando…";
     try {
       const id = await db.createEvent(name);
+      db.track("event_create", "home");
       location.hash = `#/e/${id}`;
     } catch (e) {
       toast(e.message, "error");
@@ -712,6 +714,7 @@ function donationCard() {
     text: pix.payload ? "💚 Pix copia e cola" : "💚 Copiar chave Pix",
     onClick: async () => {
       const ok = await copyText(value);
+      if (ok) db.track("donate_copy", "event");
       toast(ok ? "Pix copiado — é só colar no seu banco 💚" : "Não consegui copiar.", ok ? "success" : "error");
     },
   });
@@ -787,6 +790,7 @@ async function copyResume(transfers) {
     ...transfers.map((t) => `• ${nameOf(t.from)} paga ${fmtBRL(t.amount_cents)} para ${nameOf(t.to)}`),
   ];
   const ok = await copyText(lines.join("\n"));
+  if (ok) db.track("copy_resume", "event");
   toast(ok ? "Resumo copiado!" : "Não consegui copiar.", ok ? "success" : "error");
 }
 
